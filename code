@@ -1,0 +1,180 @@
+// jgJavascript.js - TurboWarp-compatible extension
+
+(function (Scratch) {
+    'use strict';
+
+    class jgJavascript {
+        constructor() {
+            this.runningEditorUnsandboxed = false;
+        }
+
+        getInfo() {
+            return {
+                id: 'jgJavascript',
+                name: 'JavaScript',
+                color1: '#f7bc00',
+                blocks: [
+                    {
+                        opcode: 'unsandbox',
+                        text: 'Run Unsandboxed',
+                        blockType: Scratch.BlockType.BUTTON,
+                        hideFromPalette: this.runningEditorUnsandboxed
+                    },
+                    {
+                        opcode: 'sandbox',
+                        text: 'Run Sandboxed',
+                        blockType: Scratch.BlockType.BUTTON,
+                        hideFromPalette: !this.runningEditorUnsandboxed
+                    },
+                    {
+                        opcode: 'javascriptHat',
+                        text: 'when javascript [CODE] == true',
+                        blockType: Scratch.BlockType.HAT,
+                        hideFromPalette: !this.runningEditorUnsandboxed,
+                        arguments: {
+                            CODE: {
+                                type: Scratch.ArgumentType.STRING,
+                                defaultValue: 'Math.round(Math.random()) === 1'
+                            }
+                        }
+                    },
+                    {
+                        opcode: 'javascriptStack',
+                        text: 'javascript [CODE]',
+                        blockType: Scratch.BlockType.COMMAND,
+                        arguments: {
+                            CODE: {
+                                type: Scratch.ArgumentType.STRING,
+                                defaultValue: "alert('Hello!')"
+                            }
+                        }
+                    },
+                    {
+                        opcode: 'javascriptString',
+                        text: 'javascript [CODE]',
+                        blockType: Scratch.BlockType.REPORTER,
+                        disableMonitor: true,
+                        arguments: {
+                            CODE: {
+                                type: Scratch.ArgumentType.STRING,
+                                defaultValue: 'Math.random()'
+                            }
+                        }
+                    },
+                    {
+                        opcode: 'javascriptBool',
+                        text: 'javascript [CODE]',
+                        blockType: Scratch.BlockType.BOOLEAN,
+                        disableMonitor: true,
+                        arguments: {
+                            CODE: {
+                                type: Scratch.ArgumentType.STRING,
+                                defaultValue: 'Math.round(Math.random()) === 1'
+                            }
+                        }
+                    },
+                    {
+                        blockType: Scratch.BlockType.LABEL,
+                        text: 'You can run unsandboxed',
+                        hideFromPalette: !this.runningEditorUnsandboxed
+                    },
+                    {
+                        blockType: Scratch.BlockType.LABEL,
+                        text: 'when packaging the project.',
+                        hideFromPalette: !this.runningEditorUnsandboxed
+                    },
+                    {
+                        blockType: Scratch.BlockType.LABEL,
+                        text: '⠀',
+                        hideFromPalette: !this.runningEditorUnsandboxed
+                    },
+                    {
+                        blockType: Scratch.BlockType.LABEL,
+                        text: 'Player Options >',
+                        hideFromPalette: !this.runningEditorUnsandboxed
+                    },
+                    {
+                        blockType: Scratch.BlockType.LABEL,
+                        text: 'Remove sandbox on the JavaScript Ext.',
+                        hideFromPalette: !this.runningEditorUnsandboxed
+                    }
+                ]
+            };
+        }
+
+        unsandbox() {
+            this.runningEditorUnsandboxed = true;
+            Scratch.vm.extensionManager.refreshBlocks();
+        }
+
+        sandbox() {
+            this.runningEditorUnsandboxed = false;
+            Scratch.vm.extensionManager.refreshBlocks();
+        }
+
+        evaluateCode(code) {
+            if (this.runningEditorUnsandboxed) {
+                let result;
+                try {
+                    // eslint-disable-next-line no-eval
+                    result = eval(code);
+                } catch (e) {
+                    result = e.toString();
+                }
+                return result;
+            }
+
+            // sandboxed execution using Worker
+            return new Promise((resolve) => {
+                const blob = new Blob([`
+                    self.onmessage = function (e) {
+                        try {
+                            const result = eval(e.data);
+                            self.postMessage({ result });
+                        } catch (err) {
+                            self.postMessage({ result: err.toString() });
+                        }
+                    };
+                `], { type: 'application/javascript' });
+
+                const worker = new Worker(URL.createObjectURL(blob));
+                worker.onmessage = function (e) {
+                    resolve(e.data.result);
+                    worker.terminate();
+                };
+                worker.postMessage(code);
+            });
+        }
+
+        javascriptStack(args) {
+            const code = String(args.CODE || '');
+            return this.evaluateCode(code);
+        }
+
+        javascriptString(args) {
+            const code = String(args.CODE || '');
+            return this.evaluateCode(code);
+        }
+
+        javascriptBool(args) {
+            const code = String(args.CODE || '');
+            const result = this.evaluateCode(code);
+            if (result instanceof Promise) {
+                return result.then(res => !!res);
+            }
+            return !!result;
+        }
+
+        javascriptHat(args) {
+            if (!this.runningEditorUnsandboxed) {
+                return false;
+            }
+            const result = this.javascriptBool(args);
+            if (result instanceof Promise) return false;
+            return result;
+        }
+    }
+
+    Scratch.extensions.register(new jgJavascript());
+
+})(Scratch);
